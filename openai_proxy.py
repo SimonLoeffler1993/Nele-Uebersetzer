@@ -18,19 +18,34 @@ fh = logging.FileHandler("proxy_debug.log")
 fh.setLevel(logging.INFO)
 logger.addHandler(fh)
 
-NELE_API_KEY = os.getenv("NELE_API_KEY", "YOUR_NELE_API_KEY_HERE")
-NELE_BASE_URL = "https://api.aieva.io/api:v1"
+NELE_API_KEY = os.getenv("NELE_API_KEY")
+NELE_BASE_URL = os.getenv("NELE_BASE_URL", "https://api.aieva.io/api:v1")
 
 app = FastAPI(title="Nele.ai OpenAI Proxy")
 
+def get_auth_key(request: Request = None, fallback_key: str = NELE_API_KEY) -> str:
+    """
+    Extract API key from Authorization header or fallback to env var.
+    """
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return auth_header.replace("Bearer ", "").strip()
+    return fallback_key
+
+@app.get("/")
+async def root():
+    return {"message": "Nele.ai OpenAI Proxy"}
+
 @app.get("/v1/models")
-async def list_models():
+async def list_models(request: Request):
     """
     List models from Nele.ai and transform to OpenAI format.
     """
+    api_key = get_auth_key(request)
     nele_url = f"{NELE_BASE_URL}/models"
     headers = {
-        "Authorization": f"Bearer {NELE_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Accept": "application/json"
     }
     
@@ -87,7 +102,7 @@ async def proxy_openai(path: str, request: Request):
     logger.info(f"Headers: {dict(request.headers)}")
     
     if path == "models" and request.method == "GET":
-        return await list_models()
+        return await list_models(request)
 
 
     # Map OpenAI paths to Nele.ai paths
@@ -136,9 +151,10 @@ async def proxy_openai(path: str, request: Request):
     nele_url = f"{NELE_BASE_URL}/chat-completion"
     
     # Forward headers, add auth
+    api_key = get_auth_key(request)
     # We use a MINIMAL set of headers to avoid nginx 400 Errors
     headers = {
-        "Authorization": f"Bearer {NELE_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Accept": "text/event-stream"
     }
     

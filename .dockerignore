@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.git
+.gitignore
+*.log
+README.md
+README_OPENAI.md
+.env.example
+.gemini/
+.agent/
+brain/
