@@ -38,7 +38,7 @@ async def root():
     return {"message": "Nele.ai OpenAI Proxy"}
 
 @app.get("/v1/models")
-async def list_models(request: Request):
+async def list_models(request: Request, alle: bool = False):
     """
     List models from Nele.ai and transform to OpenAI format.
     """
@@ -59,17 +59,26 @@ async def list_models(request: Request):
             nele_data = response.json()
             logger.info(f"Raw Nele.ai models response: {nele_data}")
             
-            # Nele.ai returns: {"status": "success", "data": [{"id": "...", "name": "..."}]}
-            # Or sometimes: {"models": [...]}
-            nele_models = nele_data.get("data", []) or nele_data.get("models", [])
+            # User requirement: Only use models from the "models" category
+            nele_models = nele_data.get("models", [])
+            
+            # Fallback for older structure if "models" is missing but "data" exists
+            if not nele_models and "data" in nele_data:
+                nele_models = nele_data.get("data", [])
             
             openai_models = []
             for m in nele_models:
                 # Handle cases where m is a string or a dict
-                if isinstance(m, str):
-                    m_id = m
-                else:
-                    m_id = m.get("id") or m.get("name")
+                # if isinstance(m, str):
+                #     m_id = m
+                #     is_usable = True
+                # else:
+                m_id = m.get("id") or m.get("title") or m.get("name")
+                is_usable = m.get("is_usable", True)
+                
+                # Filter by is_usable unless alle is True
+                if not alle and not is_usable:
+                   continue 
                 
                 if m_id:
                     openai_models.append({
@@ -79,7 +88,7 @@ async def list_models(request: Request):
                         "owned_by": "nele-ai"
                     })
             
-            logger.info(f"Transformed to {len(openai_models)} OpenAI models")
+            logger.info(f"Transformed to {len(openai_models)} OpenAI models (alle={alle})")
             return {
                 "object": "list",
                 "data": openai_models
