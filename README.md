@@ -42,3 +42,65 @@ Der Server läuft standardmäßig auf `http://localhost:8000`.
 3.  **Modell auswählen**: Verwende ein Modell von Nele.ai (z. B. `azure-o4-mini`).
 
 Der Proxy fängt die Anfrage ab, leitet sie an Nele.ai weiter und gibt die Antwort im OpenAI-Format zurück.
+## Streaming
+
+Der Proxy verhält sich wie die OpenAI-API: Mit `"stream": true` kommen die Tokens als Server-Sent Events (`chat.completion.chunk`), sobald nele.ai sie liefert, am Ende folgt `data: [DONE]`. Ohne `stream` gibt es wie bisher eine vollständige `chat.completion`.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="dein-nele-api-key")
+stream = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Übersetze 'Guten Morgen' ins Englische."}],
+    stream=True,
+    stream_options={"include_usage": True},  # optional: Usage-Chunk am Ende
+)
+for chunk in stream:
+    if chunk.choices and chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+```
+
+Oder mit curl:
+
+```bash
+curl -N http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer $NELE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o","stream":true,"messages":[{"role":"user","content":"Hallo"}]}'
+```
+
+Hinweise:
+
+- Fehler von nele.ai (z. B. 401, 402, 422) kommen als echter HTTP-Status im OpenAI-Fehlerformat zurück, bevor der Stream startet.
+- Hinter nginx o. Ä. setzt der Proxy `X-Accel-Buffering: no`, damit nicht gepuffert wird.
+- Unterstützte Endpunkte: `POST /v1/chat/completions` und `GET /v1/models` (jeweils auch ohne `/v1`).
+
+## Parameter
+
+| OpenAI-Feld | an nele.ai |
+| --- | --- |
+| `model`, `messages` | 1:1 (Rollen `developer` → `system`, `tool` → `user`; Content-Listen werden zu Text) |
+| `max_tokens` / `max_completion_tokens` | `max_tokens` |
+| `temperature` | `temperature` (auf 0–1 begrenzt, nele.ai erlaubt nicht mehr) |
+| `reasoning_effort` | `modelConfiguration.reasoning_effort` |
+| `tools`, `tool_choice` | siehe Tool-Modus |
+
+nele.ai-eigene Felder können über `extra_body` mitgeschickt werden und werden durchgereicht: `documentCollectionId`, `documentCollectionOptions`, `web_search`, `modelConfiguration`.
+
+## Weitere Einstellungen (`.env`)
+
+| Variable | Standard | Bedeutung |
+| --- | --- | --- |
+| `NELE_TOOL_MODE` | `prompt` | `prompt`: Tools werden in den System-Prompt geschrieben und der JSON-Aufruf aus der Antwort gelesen (bisheriges Verhalten). `native`: `tools`/`tool_choice` gehen direkt an nele.ai. |
+| `NELE_READ_TIMEOUT` | `300` | Sekunden, die der Proxy auf Daten von nele.ai wartet. |
+| `LOG_LEVEL` | `INFO` | `DEBUG` loggt auch Request-Bodies (API-Key wird geschwärzt). |
+| `LOG_FILE` | `proxy_debug.log` | Leer lassen, um nicht in eine Datei zu loggen. |
+
+## Tests
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+Die Tests laufen gegen einen simulierten nele.ai-Server und nutzen das offizielle `openai`-Python-SDK.
