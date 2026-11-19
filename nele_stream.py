@@ -121,6 +121,8 @@ def sanitize_messages_for_nele(messages: List[dict]) -> List[dict]:
             msg = {"role": role, "content": content}
             if m.get("name"):
                 msg["name"] = m["name"]
+            if m.get("attachments"):
+                msg["attachments"] = m["attachments"]
             sanitized.append(msg)
     return sanitized
 

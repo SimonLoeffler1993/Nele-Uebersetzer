@@ -70,6 +70,16 @@ class FakeNele:
 
             return StreamingResponse(gen(), media_type="text/event-stream")
 
+        self.uploads = []
+
+        @self.app.post("/image-attachment")
+        async def upload(request: Request):
+            form = await request.form()
+            f = form["file"]
+            data = await f.read()
+            self.uploads.append({"filename": f.filename, "content_type": f.content_type, "size": len(data)})
+            return {"path": f"attachments/{len(self.uploads)}-{f.filename}", "expires_at": int(time.time()) + 3600}
+
         @self.app.get("/models")
         async def models():
             return {"models": [{"id": "gpt-4o", "is_usable": True}, {"id": "old", "is_usable": False}]}
@@ -117,6 +127,7 @@ def proxy_url(proxy_module):
 @pytest.fixture
 def nele(fake_nele, proxy_module):
     fake_nele.requests.clear()
+    fake_nele.uploads.clear()
     fake_nele.script = {"status": 200, "events": [], "delay": 0.01}
     proxy_module.NELE_TOOL_MODE = "prompt"
     return fake_nele

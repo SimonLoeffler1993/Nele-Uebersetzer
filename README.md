@@ -75,6 +75,32 @@ Hinweise:
 - Hinter nginx o. Ä. setzt der Proxy `X-Accel-Buffering: no`, damit nicht gepuffert wird.
 - Unterstützte Endpunkte: `POST /v1/chat/completions` und `GET /v1/models` (jeweils auch ohne `/v1`).
 
+## Dateien und Bilder
+
+Dateien werden im OpenAI-Format als Content-Parts mitgeschickt und als `attachments` an nele.ai weitergegeben:
+
+| Typ | Verarbeitung |
+| --- | --- |
+| Bilder `png`, `jpg`, `webp` (`image_url`, als data:-URL oder https-Link) | werden über `POST /image-attachment` zu nele.ai hochgeladen und angehängt (gleiche Bilder nur einmal, solange der Upload gültig ist) |
+| Textdateien (txt, md, csv, json, …) | als Text-Attachment |
+| PDF, Word (`.docx`) | Text wird im Proxy ausgelesen und als Text-Attachment angehängt (gescannte PDFs ohne Text gehen nicht) |
+| andere Bildformate / Dateitypen | Fehler 415 |
+
+```python
+import base64
+pdf = base64.b64encode(open("vertrag.pdf", "rb").read()).decode()
+client.chat.completions.create(
+    model="gpt-4o",
+    stream=True,
+    messages=[{"role": "user", "content": [
+        {"type": "text", "text": "Übersetze dieses Dokument ins Englische."},
+        {"type": "file", "file": {"filename": "vertrag.pdf", "file_data": f"data:application/pdf;base64,{pdf}"}},
+    ]}],
+)
+```
+
+Maximale Größe pro Datei: 25 MB. `file_id` aus der OpenAI-Files-API wird nicht unterstützt.
+
 ## Parameter
 
 | OpenAI-Feld | an nele.ai |

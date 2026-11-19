@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from nele_files import AttachmentError, ImageUploader, extract_attachments, has_file_parts
 from nele_stream import (
     TOOL_MODE_NATIVE,
     TOOL_MODE_PROMPT,
@@ -193,10 +194,25 @@ async def chat_completions(request: Request):
     include_usage = bool((request_data.get("stream_options") or {}).get("include_usage"))
     tools_in_prompt = bool(request_data.get("tools")) and NELE_TOOL_MODE != TOOL_MODE_NATIVE
 
-    payload = build_nele_payload(request_data, NELE_TOOL_MODE)
-    logger.debug(f"Payload for Nele: {json.dumps(payload, ensure_ascii=False)}")
-
     api_key = get_auth_key(request)
+
+    # Dateien/Bilder -> nele.ai-Attachments (Bilder werden vorher hochgeladen)
+    if has_file_parts(request_data["messages"]):
+        async with make_client() as upload_client:
+            try:
+                request_data["messages"] = await extract_attachments(
+                    request_data["messages"],
+                    ImageUploader(NELE_BASE_URL, api_key, upload_client),
+                    upload_client,
+                )
+            except AttachmentError as e:
+                return openai_error(e.status_code, str(e), "invalid_request_error")
+            except httpx.HTTPError as e:
+                return openai_error(502, f"Datei-Upload zu nele.ai fehlgeschlagen: {e}")
+
+    payload = build_nele_payload(request_data, NELE_TOOL_MODE)
+    logger.debug(f"Payload for Nele: {json.dumps(payload, ensure_ascii=False)[:5000]}")
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Accept": "text/event-stream",
