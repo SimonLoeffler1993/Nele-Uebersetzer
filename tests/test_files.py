@@ -70,12 +70,15 @@ def user_msg(nele):
 
 def test_image_is_uploaded_and_attached(ok, proxy_url):
     ask(proxy_url, [{"type": "text", "text": "Was ist das?"},
-                    {"type": "image_url", "image_url": {"url": data_url(PNG, "image/png")}}])
+                    {"type": "image_url", "image_url": {"url": data_url(PNG, "image/png"), "detail": "low"}}])
     assert ok.uploads[0]["content_type"] == "image/png"
     msg = user_msg(ok)
     assert msg["content"] == "Was ist das?"
-    assert msg["attachments"][0]["type"] == "image"
-    assert msg["attachments"][0]["path"].startswith("attachments/1-")
+    att = msg["attachments"][0]
+    assert att["type"] == "image"
+    assert att["content"].startswith("attachments/1-")
+    assert att["detail"] == "low"
+    assert att["id"] and att["name"]
 
 
 def test_same_image_is_uploaded_only_once(ok, proxy_url):
@@ -90,7 +93,8 @@ def test_text_file_becomes_text_attachment(ok, proxy_url):
                     {"type": "file", "file": {"filename": "notiz.txt",
                                               "file_data": data_url("Grüß Gott".encode(), "text/plain")}}])
     att = user_msg(ok)["attachments"][0]
-    assert att == {"type": "text", "name": "notiz.txt", "content": "Grüß Gott"}
+    assert att["type"] == "text" and att["name"] == "notiz.txt" and att["content"] == "Grüß Gott"
+    assert att["id"]
 
 
 def test_pdf_text_is_extracted(ok, proxy_url):

@@ -51,12 +51,22 @@ class AttachmentError(Exception):
 # (an einer Stelle gebündelt, damit es leicht an die Doku angepasst werden kann)
 # --------------------------------------------------------------------------- #
 
+# Laut nele.ai-Doku: {type: text|image, id, name, content, detail?: high|low}
+# Bei Bildern ist `content` der `path` aus POST /image-attachment.
+
+def _attachment_id(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()[:32]
+
+
 def make_text_attachment(name: str, text: str) -> dict:
-    return {"type": "text", "name": name, "content": text}
+    return {"type": "text", "id": _attachment_id(name.encode() + b"\0" + text.encode()), "name": name, "content": text}
 
 
-def make_image_attachment(name: str, path: str) -> dict:
-    return {"type": "image", "name": name, "path": path}
+def make_image_attachment(name: str, path: str, detail: Optional[str] = None) -> dict:
+    att = {"type": "image", "id": _attachment_id(path.encode()), "name": name, "content": path}
+    if detail in ("high", "low"):
+        att["detail"] = detail
+    return att
 
 
 # --------------------------------------------------------------------------- #
@@ -208,10 +218,12 @@ async def _load_image_url(url: str, client: httpx.AsyncClient) -> Tuple[bytes, O
 async def part_to_attachment(part: dict, index: int, upload: Uploader, client: httpx.AsyncClient) -> Optional[dict]:
     ptype = part.get("type")
     filename = None
+    detail = None
 
     if ptype == "image_url":
         img = part.get("image_url")
         url = img.get("url") if isinstance(img, dict) else img
+        detail = img.get("detail") if isinstance(img, dict) else None
         raw, mime = await _load_image_url(url or "", client)
     elif ptype in ("file", "input_file"):
         f = part.get("file") if ptype == "file" else part
@@ -227,6 +239,7 @@ async def part_to_attachment(part: dict, index: int, upload: Uploader, client: h
             raise AttachmentError("Datei-Part ohne Inhalt.")
     elif ptype in ("input_image",):
         raw, mime = await _load_image_url(part.get("image_url") or "", client)
+        detail = part.get("detail")
     else:
         logger.warning(f"Content-Part vom Typ '{ptype}' wird ignoriert.")
         return None
@@ -239,7 +252,7 @@ async def part_to_attachment(part: dict, index: int, upload: Uploader, client: h
     if mime in NELE_IMAGE_TYPES:
         name = filename or f"bild-{index}.{NELE_IMAGE_TYPES[mime]}"
         path = await upload(raw, mime, name)
-        return make_image_attachment(name, path)
+        return make_image_attachment(name, path, detail)
     if mime.startswith("image/"):
         raise AttachmentError(f"Bildformat {mime} wird von nele.ai nicht unterstützt (nur png, jpg, webp).", 415)
 
