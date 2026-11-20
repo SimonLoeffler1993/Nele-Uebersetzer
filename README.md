@@ -33,6 +33,22 @@ python openai_proxy.py
 
 Der Server läuft standardmäßig auf `http://localhost:8000`.
 
+## Docker
+
+Das fertige Image liegt auf Docker Hub unter [`simon8393/neleproxy`](https://hub.docker.com/r/simon8393/neleproxy) (amd64 und arm64):
+
+```bash
+docker run -d -p 8000:8000 simon8393/neleproxy:latest
+```
+
+Eine GitHub Action (`.github/workflows/docker-publish.yml`) baut das Image automatisch:
+
+- Push auf `main` → Tag `latest` (plus `sha-<commit>`)
+- Git-Tag `v1.2.3` → Tags `1.2.3` und `1.2`
+- Pull Requests → nur bauen, nicht pushen
+
+Benötigte Repository-Secrets: `DOCKERHUB_USERNAME` und `DOCKERHUB_TOKEN` (Docker Hub Access Token mit Read & Write).
+
 ## Verwendung mit n8n
 
 1.  Ein **OpenAI Chat Model** Node in n8n hinzufügen.
